@@ -26,6 +26,25 @@ bind_interface
 //■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
 //■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
 
+/*!
+ * 通用编译环境
+ */
+#if !defined(__WINDOWS__) && ( \
+    defined(MSC_VCR) || defined(_MSC_VCR) || \
+    defined(WIN32) || defined(_WIN32) || defined(__WIN32) || defined(__WIN32__) ||  \
+    defined(WIN64) || defined(_WIN64) || defined(__WIN64) || defined(__WIN64__)     \
+)
+    #define __WINDOWS__
+#endif
+
+#if !defined(__SYSENV32__) && ( __SIZEOF_POINTER__ == 4 )
+    #define __SYSENV32__
+#endif
+
+//■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■
+//■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■
+
+
 #define get_composed_function_name(fun, l_mark, r_mark) l_mark##fun##r_mark
 
 /**
