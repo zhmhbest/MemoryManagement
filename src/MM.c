@@ -4,6 +4,21 @@
 #include <stdlib.h>
 #include <string.h>
 
+/*!
+ * 通用编译环境
+ */
+#if !defined(__WINDOWS__) && ( \
+    defined(MSC_VCR) || defined(_MSC_VCR) || \
+    defined(WIN32) || defined(_WIN32) || defined(__WIN32) || defined(__WIN32__) ||  \
+    defined(WIN64) || defined(_WIN64) || defined(__WIN64) || defined(__WIN64__)     \
+)
+    #define __WINDOWS__
+#endif
+
+#if !defined(__SYSENV32__) && ( __SIZEOF_POINTER__ == 4 )
+    #define __SYSENV32__
+#endif
+
 //■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
 //■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
 
@@ -41,11 +56,6 @@ define_handle {
 
 //!MemoryManagement Private Methods
 
-define_private_function(void, mem_log_err)
-(MemoryManagement* handle, const char* filename, int line, const char* message) {
-    fprintf(handle->err_stream, "Memory:%s failed in %s at %d.\n", message, filename, line);
-}
-
 define_private_function(inline void, mem_init_tail)
 (void* header, size_t user_size){
     void* tail = (char*)header + sizeof(MemoryHeader) + user_size;
@@ -62,36 +72,23 @@ define_private_function(inline void, mem_init_data)
     call_private_function(mem_init_tail) (header, user_size);
 }
 
+//! interface
 define_private_function(int, mem_check_mark)
-(MemoryHeader* header) {
+(void* header) {
     int i;
     unsigned char* dat;
-
     dat = (unsigned char*)header + sizeof(MemoryHeader) - sizeof(MemoryMark);
     for(i=0; i<sizeof(MemoryMark); i++) {
         if(dat[i] != 0x66) return -1;
     }
-
-    dat = (unsigned char*)header + sizeof(MemoryHeader) + (header->size);
+    dat = (unsigned char*)header + sizeof(MemoryHeader) + (((MemoryHeader*)header)->size);
+    /*for(i=0; i<sizeof(MemoryMark); i++) {
+        printf("%x\n", dat[i]);
+    }*/
     for(i=0; i<sizeof(MemoryMark); i++) {
         if(dat[i] != 0x99) return -2;
     }
-
     return 0;
-}
-
-define_private_function(void, mem_print_check_mark)
-(MemoryManagement* handle, MemoryHeader* header) {
-    int r = call_private_function(mem_check_mark)(header);
-    if(r < 0) {
-        fprintf(handle->err_stream,
-            "%s Line=%Id Size=%Id\n\tOverflow=%d\n",
-                header->name,
-                header->line,
-                header->size,
-                r
-        );
-    }
 }
 
 define_private_function(void, mem_chain_a)
@@ -128,14 +125,63 @@ define_private_function(void, mem_chain_d)
     }
 }
 
+//■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■
+//■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■
+
+//! log error
+define_private_function(void, mem_log_err)
+(MemoryManagement* handle, const char* filename, size_t line, const char* message) {
+    fprintf(handle->err_stream,
+        #ifdef __SYSENV32__
+            "Error: %s in %s at %d.\n"
+        #else
+            "Error: %s in %s at %Id.\n"
+        #endif // __SYSENV32__
+        , message, filename, line);
+}
+
+//! log check mark
+define_private_function(void, mem_log_check_mark)
+(MemoryManagement* handle, MemoryHeader* header) {
+    static const char* err_msg[] = {"Overflow at tail", "Overflow at head"};
+    int result = call_private_function(mem_check_mark)(header);
+    if( 0!=result ) {
+        call_private_function(mem_log_err)
+            (handle, (header)->name, (header)->line, err_msg[result+2]);
+    }
+}
+
+//! print header
+define_private_function(void, mem_print_header)
+(MemoryManagement* handle, MemoryHeader* header) {
+    fprintf(handle->log_stream,
+        #ifdef __SYSENV32__
+            "%s at %d, Size=%d\n"
+        #else
+            "%s at %Id, Size=%Id\n"
+        #endif // __SYSENV32__
+        ,
+        header->name,
+        header->line,
+        header->size
+    );
+}
+
+//! print data
 define_private_function(void, mem_print_data)
 (MemoryManagement* handle, MemoryHeader* header) {
     unsigned char* dat = (unsigned char*)header + sizeof(MemoryHeader);
-    int i = 0;
+    size_t i = 0;
     for (;; i++) {
         if(i < header->size) {
             if (i % 8 == 0) {
-                fprintf(handle->log_stream, "\n\t");
+                fprintf(handle->log_stream,
+                #ifdef __SYSENV32__
+                    "\n\t [%04d] "
+                #else
+                    "\n\t [%04Id] "
+                #endif // __SYSENV32__
+                , (i/8));
             }
             fprintf(handle->log_stream, "%02x ", dat[i]);
         } else {
@@ -152,11 +198,11 @@ define_private_function(void, mem_print_data)
 #define handle ( (MemoryManagement*)__H )
 
 //! init
-define_private_function(void, init)
+define_private_function(void, setstream)
 (handle_t __H, FILE* log, FILE* err) {
     handle->log_stream = log;
     handle->err_stream = err;
-    handle->lnk_header = NULL;
+    //handle->lnk_header = NULL;
 }
 
 //! allocate
@@ -178,20 +224,19 @@ define_private_function(void*, allocate)
 //! reallocate
 define_private_function(void*, reallocate)
 (handle_t __H, const char* filename, size_t line, void* his_ptr_usr, size_t user_size) {
+
     size_t alloc_size = sizeof(MemoryHeader) + user_size + sizeof(MemoryTail);
 
-    void*  his_ptr;
-    MemoryHeader his_header;
-    //his_header.size
-
-    if(his_ptr_usr) {
-        his_ptr = (char*)his_ptr_usr - sizeof(MemoryHeader);
-        call_private_function(mem_print_check_mark) (handle, (MemoryHeader*)his_ptr);
-        his_header = *((MemoryHeader*)his_ptr);
-        call_private_function(mem_chain_d) (handle, (MemoryHeader*)his_ptr);
-    } else {
+    void*        his_ptr;
+    MemoryHeader his_tmp;
+    if(NULL==his_ptr_usr) {
         his_ptr = NULL;
-        his_header.size = 0;
+        his_tmp.size = 0;
+    } else {
+        his_ptr = (char*)his_ptr_usr - sizeof(MemoryHeader);
+        his_tmp = *((MemoryHeader*)his_ptr);
+        call_private_function(mem_log_check_mark) (handle, (MemoryHeader*)his_ptr);
+        call_private_function(mem_chain_d) (handle, (MemoryHeader*)his_ptr);
     }
 
     //ReAllocate
@@ -203,25 +248,34 @@ define_private_function(void*, reallocate)
             call_private_function(mem_log_err) (handle, filename, line, "realloc");
             free(his_ptr);
         }
+        return NULL;
     }
+    #ifdef __debug
+        printf("[debug] pointer is old : %s\n", (his_ptr==new_ptr)?"True":"False");
+    #endif // __debug
+
     //Final
     MemoryHeader* header = (MemoryHeader*)new_ptr;
     if(NULL==his_ptr) {
         call_private_function(mem_init_data) (header, filename, line, user_size);
         call_private_function(mem_chain_a) (handle, header);
     } else {
-        *header = his_header;
+        *header = his_tmp;
         header->size = user_size;
         call_private_function(mem_chain_r)   (handle, header);
         call_private_function(mem_init_tail) (header, user_size);
     }
+
     //Format
-    if (user_size > his_header.size) {
-        memset((char*)new_ptr + sizeof(MemoryHeader) + his_header.size,
-               0xCC,
-               (user_size - his_header.size));
+    if (user_size > his_tmp.size) {
+        memset(
+            (char*)new_ptr + sizeof(MemoryHeader) + his_tmp.size,
+            0xCC,
+            (user_size - his_tmp.size)
+        );
     }
-    return new_ptr;
+
+    return new_ptr + sizeof(MemoryHeader);
 }
 
 //! free
@@ -229,32 +283,55 @@ define_private_function(void, free)
 (handle_t __H, void* ptr) {
     if(NULL==ptr) return;
     MemoryHeader* header = (MemoryHeader*)( (char*)ptr - sizeof(MemoryHeader) );
-    call_private_function(mem_print_check_mark)(handle, header);
+    #ifdef __debug
+        printf("[debug]free: %Id\n", header->size);
+    #endif // __debug
+    call_private_function(mem_log_check_mark)(handle, header);
     call_private_function(mem_chain_d)(handle, header);
     free(header);
 }
 
-//! dump
-define_private_function(void, dump)
+//! check all
+define_private_function(void, check_all)
 (handle_t __H) {
-    size_t index = 0;
     MemoryHeader* it_header = handle->lnk_header;
     while(it_header) {
-        fprintf(handle->log_stream, "--------------------------\n");
-        //Print Message
-        fprintf(handle->log_stream,
-            "[%04Id] %s\n\tLine=%Id, Size=%Id, Overflow=%d\n",
-                index,
-                it_header->name,
-                it_header->line,
-                it_header->size,
-                call_private_function(mem_check_mark)(it_header)
-        );
-        //Print Data
+        call_private_function(mem_log_check_mark)(handle, it_header);
+        it_header = it_header->next;
+    }
+}
+
+//! print block
+define_private_function(void, print_block)
+(handle_t __H, const char* filename, size_t line, void* ptr) {
+    MemoryHeader* header = (MemoryHeader*)( (char*)ptr - sizeof(MemoryHeader) );
+    fprintf(handle->log_stream,
+        #ifdef __SYSENV32__
+            "%s at %d\n"
+        #else
+            "%s at %Id\n"
+        #endif // __SYSENV32__
+        , filename, line
+    );
+    call_private_function(mem_print_header)(handle, header);
+    call_private_function(mem_log_check_mark)(handle, header);
+    call_private_function(mem_print_data)(handle, header);
+}
+
+//! dump all
+define_private_function(void, dump)
+(handle_t __H) {
+
+    int index = 0;
+    MemoryHeader* it_header = handle->lnk_header;
+    while(it_header) {
+        fprintf(handle->log_stream, "[%04d] ", index);
+        call_private_function(mem_print_header)(handle, it_header);
+        call_private_function(mem_log_check_mark)(handle, it_header);
         call_private_function(mem_print_data)(handle, it_header);
         it_header = it_header->next; index++;
     }
-    fprintf(handle->log_stream, "--------------------------\n\n");
+    fprintf(handle->log_stream, "\n\n");
 }
 
 #undef handle
@@ -265,10 +342,13 @@ define_private_function(void, dump)
 implement_handle(MemoryManagement) = {NULL, NULL, NULL};
 
 implement_interface(MEMMNG_Methods) {
-    call_private_function(init),
+    call_private_function(setstream),
     call_private_function(allocate),
     call_private_function(reallocate),
     call_private_function(free),
+    call_private_function(mem_check_mark),
+    call_private_function(check_all),
+    call_private_function(print_block),
     call_private_function(dump)
 };
 
@@ -310,6 +390,9 @@ define_private_function(handle_t, storage_open)
 
 	MemoryStorage* storage =
         call_private_function(allocate) (__H, filename, line, sizeof(MemoryStorage));
+    #ifdef __debug
+        printf("[debug] Open Storage!\n");
+    #endif // __debug
     storage->managment = (MemoryManagement*)__H;
     storage->page_list = NULL;
     storage->page_size = page_size;
@@ -336,10 +419,13 @@ define_private_function(void*, storage_allocate)
 	} else {
 		// 存储器中没有空闲的内存块
 		size_t alloc_cell_num = getmax(cell_need, storage->page_size);
+		size_t alloc_byte_num = sizeof(MemoryPage) + CellSize * (alloc_cell_num - 1); //自带一个Cell
+		#ifdef __debug
+            printf("alloc cell=%Id, byte=%Id\n", alloc_cell_num, alloc_byte_num);
+		#endif // __debug
         MemoryPage* new_page = (MemoryPage*)
-            call_private_function(allocate) (storage->managment, filename, line,
-                sizeof(MemoryPage) + CellSize * (alloc_cell_num - 1) //因为自带一个
-            );
+            call_private_function(allocate) (storage->managment, filename, line, alloc_byte_num);
+
         //插入链表
 		new_page->next = storage->page_list;
 		new_page->cell_max = alloc_cell_num;
@@ -361,6 +447,9 @@ define_private_function(void, storage_close)
 		storage->page_list = temp;
 	}
 	call_private_function(free)(storage->managment, storage);
+    #ifdef __debug
+        printf("[debug] Close Storage!\n");
+    #endif // __debug
 }
 
 //■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■

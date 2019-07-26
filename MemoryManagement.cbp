@@ -35,16 +35,19 @@
 			<Add directory="include" />
 		</Compiler>
 		<Unit filename="include/MM.h" />
-		<Unit filename="src/main.c">
+		<Unit filename="src/MM.c">
 			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="src/MM.c">
+		<Unit filename="src/main.c">
 			<Option compilerVar="CC" />
 		</Unit>
 		<Extensions>
 			<code_completion />
 			<envvars />
 			<debugger />
+			<wxsmith version="1">
+				<gui name="wxWidgets" src="" main="" init_handlers="necessary" language="CPP" />
+			</wxsmith>
 		</Extensions>
 	</Project>
 </CodeBlocks_project_file>

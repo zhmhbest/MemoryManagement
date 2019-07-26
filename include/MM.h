@@ -9,7 +9,7 @@
 //■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
 
 define_interface {
-    define_interface_function(void, init)
+    define_interface_function(void, setstream)
         (handle_t, FILE* log, FILE* err);
 
     define_interface_function(void*, allocate)
@@ -21,6 +21,13 @@ define_interface {
     define_interface_function(void, free)
         (handle_t handle, void* pointer);
 
+    define_interface_function(int, check)
+        (void*);
+    define_interface_function(void, check_all)
+        (handle_t handle);
+
+    define_interface_function(void, print_block)
+        (handle_t handle, const char* filename, size_t line, void*);
     define_interface_function(void, dump)
         (handle_t handle);
 
@@ -32,19 +39,32 @@ expose_block(MEMMNG);
 //■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■
 #ifdef __debug
 
-#define MEM_Init()                  ((MEMMNG_Methods*)MEMMNG[1])->init(MEMMNG[0], stdout, stderr)
-#define MEM_Allocate(SIZE)          ((MEMMNG_Methods*)MEMMNG[1])->allocate(MEMMNG[0], __FILE__, __LINE__, SIZE)
-#define MEM_Reallocate(PTR, SIZE)   ((MEMMNG_Methods*)MEMMNG[1])->reallocate(MEMMNG[0], __FILE__, __LINE__, PTR, SIZE)
-#define MEM_Free(PTR)               ((MEMMNG_Methods*)MEMMNG[1])->free(MEMMNG[0], PTR)
-#define MEM_Dump()                  ((MEMMNG_Methods*)MEMMNG[1])->dump(MEMMNG[0])
+#define MEM_setstream()         ((MEMMNG_Methods*)MEMMNG[1])->setstream(MEMMNG[0], stdout, stderr)
+#define MEM_malloc(SIZE)        ((MEMMNG_Methods*)MEMMNG[1])->allocate(MEMMNG[0], __FILE__, __LINE__, SIZE)
+#define MEM_realloc(PTR, SIZE)  ((MEMMNG_Methods*)MEMMNG[1])->reallocate(MEMMNG[0], __FILE__, __LINE__, PTR, SIZE)
+#define MEM_free(PTR)           ((MEMMNG_Methods*)MEMMNG[1])->free(MEMMNG[0], PTR)
+
+#define MEM_print_block(PTR)    ((MEMMNG_Methods*)MEMMNG[1])->print_block(MEMMNG[0], __FILE__, __LINE__, PTR)
+#define MEM_dump_blocks()       ((MEMMNG_Methods*)MEMMNG[1])->dump(MEMMNG[0])
+
+#define MEM_check_block(PTR)    ((MEMMNG_Methods*)MEMMNG[1])->check(PTR)
+#define MEM_check_all_blocks()  ((MEMMNG_Methods*)MEMMNG[1])->check_all(MEMMNG[0])
 
 #else
 
-#define MEM_Init()
-#define MEM_Allocate(SIZE)          malloc(SIZE)
-#define MEM_Reallocate(PTR, SIZE)   realloc(PTR, SIZE)
-#define MEM_Free(PTR)               free(PTR)
-#define MEM_Dump()
+#define MEM_setstream()
+#define MEM_malloc(SIZE)            malloc(SIZE)
+#define MEM_realloc(PTR, SIZE)      realloc(PTR, SIZE)
+#define MEM_free(PTR)               free(PTR)
+
+#define MEM_dump_blocks()
+#define MEM_check_all_blocks()
+
+#define MEM_print_block(PTR)
+#define MEM_dump_blocks()
+
+#define MEM_check_block(PTR)
+#define MEM_check_all_blocks()
 
 #endif // __debug
 //■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■ ■■■■■■■■
@@ -64,9 +84,17 @@ define_interface {
 
 expose_interface(MEMMNG_Storage);
 
-#define MEM_S_Open(PAGE_SIZE)           ((MEMMNG_Storage_Methods*)MEMMNG_Storage)->open (MEMMNG[0], __FILE__, __LINE__, PAGE_SIZE)
-#define MEM_S_Allocate(STORAGE_H, SIZE) ((MEMMNG_Storage_Methods*)MEMMNG_Storage)->allocate (STORAGE_H, __FILE__, __LINE__, SIZE)
-#define MEM_S_Close(STORAGE_H)          ((MEMMNG_Storage_Methods*)MEMMNG_Storage)->close (STORAGE_H)
+#define MEM_open_storage(PAGE_SIZE)         \
+    ((MEMMNG_Storage_Methods*)MEMMNG_Storage)->open \
+    (MEMMNG[0], __FILE__, __LINE__, PAGE_SIZE)
+
+#define MEM_storage_malloc(STORAGE_H, SIZE) \
+    ((MEMMNG_Storage_Methods*)MEMMNG_Storage)->allocate \
+    (STORAGE_H, __FILE__, __LINE__, SIZE)
+
+#define MEM_dispose_storage(STORAGE_H)      \
+    ((MEMMNG_Storage_Methods*)MEMMNG_Storage)->close \
+    (STORAGE_H)
 
 #endif // __debug
 //■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
